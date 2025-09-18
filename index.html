@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Online Food Management System</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fb; margin:0; padding:0; color:#333; }
+  header { background: #2c3e50; color: #fff; padding: 20px; text-align: center; font-size: 2em; font-weight: bold; }
+  .container { max-width: 900px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.1);}
+  input, select, button { padding: 10px; margin: 5px 0; width: 100%; border-radius: 6px; border: 1px solid #ccc; font-size:1em; }
+  button { cursor: pointer; background: #2980b9; color: #fff; border: none; font-weight:bold; transition: 0.3s; }
+  button:hover { background: #1c5980; }
+  .log { background: #ecf0f1; padding: 15px; border-radius: 8px; height: 250px; overflow-y: auto; margin-top: 15px; }
+  .menu-item { display: flex; justify-content: space-between; margin: 5px 0; padding: 8px; border-bottom: 1px solid #ddd; }
+  .hidden { display: none; }
+  .order-card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin: 5px 0; background: #f9f9f9; display:flex; justify-content: space-between; align-items:center; box-shadow:0 2px 6px rgba(0,0,0,0.05);}
+  .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.9em; color: #fff; font-weight:bold; display:inline-flex; align-items:center; gap:4px;}
+  .Pending { background: #f39c12; }
+  .Cooking { background: #3498db; }
+  .Ready { background: #27ae60; }
+  .Delivered { background: #7f8c8d; }
+  .tab { padding:12px 25px; cursor:pointer; display:inline-block; background:#bdc3c7; margin-right:5px; border-radius:8px; font-weight:bold; }
+  .tab.active { background:#2980b9; color:#fff; }
+  .notification { position:fixed; top:20px; right:20px; background:#2980b9; color:#fff; padding:12px 25px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.3); display:none; z-index:1000; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<header>🍽️ Online Food Management System</header>
+
+<div class="container">
+
+<!-- Tabs -->
+<div id="tabs" class="hidden" style="margin-bottom:20px;">
+  <span class="tab active" onclick="showTab('customerPage')">👤 Customer</span>
+  <span class="tab" onclick="showTab('adminPage')">🛠️ Admin</span>
+</div>
+
+<!-- Login Page -->
+<div id="loginPage">
+  <h2>Login 🔑</h2>
+  <select id="roleSelect">
+    <option value="customer">Customer 👤</option>
+    <option value="admin">Admin 🛠️</option>
+  </select>
+  <input type="text" id="userName" placeholder="Enter your name">
+  <button onclick="login()">Login ✅</button>
+</div>
+
+<!-- Customer Page -->
+<div id="customerPage" class="hidden">
+  <h2>Welcome <span id="customerName"></span> (👤 Customer)</h2>
+
+  <h3>Menu 🍴</h3>
+  <div id="menu">
+    <div class="menu-item"><span>🍕 Pizza - ₹300</span><button onclick="addToOrder('Pizza',300)">Add ➕</button></div>
+    <div class="menu-item"><span>🍔 Burger - ₹150</span><button onclick="addToOrder('Burger',150)">Add ➕</button></div>
+    <div class="menu-item"><span>🍝 Pasta - ₹250</span><button onclick="addToOrder('Pasta',250)">Add ➕</button></div>
+  </div>
+
+  <label>Delivery Type 🚚:</label>
+  <select id="deliveryType">
+    <option value="standard">Standard ⏳</option>
+    <option value="express">Express ⚡</option>
+  </select>
+
+  <button onclick="placeOrder()">Place Order 🛒</button>
+  <button onclick="cancelOrder()">Cancel Last ❌</button>
+
+  <h3>Your Orders 🧾</h3>
+  <div id="customerOrders" class="log"></div>
+</div>
+
+<!-- Admin Page -->
+<div id="adminPage" class="hidden">
+  <h2>Welcome <span id="adminName"></span> (🛠️ Admin)</h2>
+
+  <h3>All Orders 📝</h3>
+  <div id="allOrders" class="log"></div>
+  <div style="margin-top:10px;">
+    <button onclick="filterOrders('Pending')">⏳ Pending</button>
+    <button onclick="filterOrders('Cooking')">🍳 Cooking</button>
+    <button onclick="filterOrders('Ready')">✅ Ready</button>
+    <button onclick="filterOrders('Delivered')">📦 Delivered</button>
+    <button onclick="showAllOrders()">📋 Show All</button>
+  </div>
+</div>
+
+</div>
+
+<div id="notification" class="notification"></div>
+
+<script>
+let currentUser=null, role=null;
+let orders=[], lastOrder=null;
+let selectedItems=[];
+
+// --- Observer Pattern ---
+class Order {
+  constructor(customer, items, total){
+    this.customer=customer;
+    this.items=items;
+    this.total=total;
+    this.status="Pending";
+    this.observers=[];
+  }
+  addObserver(obs){ this.observers.push(obs); }
+  notify(){ this.observers.forEach(o=>o.update(this.status,this)); }
+  setStatus(status){ this.status=status; this.notify(); }
+}
+
+class CustomerObserver {
+  constructor(name){ this.name=name; }
+  update(status, order){ renderCustomerOrders(); showNotification(`🔔 Your order is ${status}`); }
+}
+class AdminObserver { update(status, order){ renderAdminOrders(); } }
+
+// --- Strategy Pattern ---
+class StandardDelivery { calculate(amount){ return amount+50; } }
+class ExpressDelivery { calculate(amount){ return amount+100; } }
+class Delivery { constructor(strategy){ this.strategy=strategy; } setStrategy(s){ this.strategy=s; } calculate(amount){ return this.strategy.calculate(amount); } }
+
+// --- Command Pattern ---
+class Command { execute(){} undo(){} }
+class PlaceOrderCommand extends Command {
+  constructor(order){ super(); this.order=order; }
+  execute(){ orders.push(this.order); lastOrder=this.order; renderCustomerOrders(); renderAdminOrders(); }
+  undo(){ if(lastOrder){ orders.pop(); lastOrder=null; renderCustomerOrders(); renderAdminOrders(); } }
+}
+class CancelOrderCommand extends Command {
+  constructor(order){ super(); this.order=order; }
+  execute(){ if(lastOrder){ orders=orders.filter(o=>o!==lastOrder); lastOrder=null; renderCustomerOrders(); renderAdminOrders(); } }
+}
+class OrderManager { constructor(){ this.history=[]; } runCommand(cmd){ cmd.execute(); this.history.push(cmd); } undo(){ const cmd=this.history.pop(); if(cmd) cmd.undo(); } }
+let orderManager=new OrderManager();
+
+// --- Login ---
+function login(){
+  role=document.getElementById("roleSelect").value;
+  currentUser=document.getElementById("userName").value;
+  if(!currentUser){ alert("Enter name!"); return; }
+
+  document.getElementById("loginPage").classList.add("hidden");
+  document.getElementById("tabs").classList.remove("hidden");
+
+  if(role==="customer"){
+    showTab('customerPage');
+    document.getElementById("customerName").innerText=currentUser;
+  } else {
+    showTab('adminPage');
+    document.getElementById("adminName").innerText=currentUser;
+  }
+}
+
+// --- Tabs ---
+function showTab(tabId){
+  document.querySelectorAll('#customerPage, #adminPage').forEach(d=>d.classList.add('hidden'));
+  document.getElementById(tabId).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  if(tabId==='customerPage') document.querySelector('.tab').classList.add('active');
+  else document.querySelectorAll('.tab')[1].classList.add('active');
+}
+
+// --- Menu Selection ---
+function addToOrder(name, price){ selectedItems.push({name,price}); renderCustomerOrders(); }
+
+// --- Place / Cancel Order ---
+function placeOrder(){
+  if(selectedItems.length===0){ alert("Select items!"); return; }
+  let deliveryType=document.getElementById("deliveryType").value;
+  let delivery=new Delivery(deliveryType==="standard"? new StandardDelivery(): new ExpressDelivery());
+  let totalPrice=selectedItems.reduce((sum,item)=>sum+item.price,0);
+  totalPrice=delivery.calculate(totalPrice);
+
+  let order=new Order(currentUser, selectedItems,totalPrice,currentUser);
+  order.addObserver(new CustomerObserver(currentUser));
+  order.addObserver(new AdminObserver());
+
+  let cmd=new PlaceOrderCommand(order);
+  orderManager.runCommand(cmd);
+  selectedItems=[];
+}
+
+function cancelOrder(){ if(lastOrder){ let cmd=new CancelOrderCommand(lastOrder); orderManager.runCommand(cmd); } }
+
+// --- Admin: Change Status ---
+function changeStatus(order,status){ order.setStatus(status); }
+
+// --- Render Orders ---
+function renderCustomerOrders(){
+  let div=document.getElementById("customerOrders");
+  div.innerHTML="";
+  orders.filter(o=>o.customer===currentUser).forEach(o=>{
+    let card=document.createElement("div");
+    card.className="order-card";
+    let statusEmoji = o.status==="Pending"?"⏳":o.status==="Cooking"?"🍳":o.status==="Ready"?"✅":"📦";
+    card.innerHTML=`<b>${o.items.map(i=>i.name).join(", ")}</b> - ₹${o.total} <span class="badge ${o.status}">${statusEmoji} ${o.status}</span>`;
+    div.appendChild(card);
+  });
+}
+
+function renderAdminOrders(filteredStatus=null){
+  let div=document.getElementById("allOrders");
+  div.innerHTML="";
+  let displayOrders=filteredStatus? orders.filter(o=>o.status===filteredStatus) : orders;
+  displayOrders.forEach(o=>{
+    let card=document.createElement("div");
+    card.className="order-card";
+    let statusButtons=`<div>
+      <button onclick="changeStatus(orders[${orders.indexOf(o)}],'Cooking')">🍳 Cooking</button>
+      <button onclick="changeStatus(orders[${orders.indexOf(o)}],'Ready')">✅ Ready</button>
+      <button onclick="changeStatus(orders[${orders.indexOf(o)}],'Delivered')">📦 Delivered</button>
+    </div>`;
+    let statusEmoji = o.status==="Pending"?"⏳":o.status==="Cooking"?"🍳":o.status==="Ready"?"✅":"📦";
+    card.innerHTML=`<b>${o.customer}</b>: ${o.items.map(i=>i.name).join(", ")} - ₹${o.total} <span class="badge ${o.status}">${statusEmoji} ${o.status}</span>${statusButtons}`;
+    div.appendChild(card);
+  });
+}
+
+// --- Filter Orders ---
+function filterOrders(status){ renderAdminOrders(status); }
+function showAllOrders(){ renderAdminOrders(); }
+
+// --- Notifications ---
+function showNotification(msg){
+  let n=document.getElementById("notification");
+  n.innerText=msg;
+  n.style.display="block";
+  setTimeout(()=>{ n.style.display="none"; },3000);
+}
+</script>
+
+</body>
+</html>
